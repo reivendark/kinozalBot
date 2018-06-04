@@ -11,6 +11,7 @@ const token = '607906404:AAFQIbx5VOIMencvhVgyMLd8Q1JGHbdGO28';
 const bot = new TelegramBot(token, {polling: true});
 
 let _jsonData;
+let _watchedModeOn = true;
 
 function readWatched() {
 	let data = fs.readFileSync('watched.json');
@@ -65,10 +66,12 @@ function getPageBody(uri, callback) {
 			};
 
 			let alreadyWatched = false;
-			for (let i = 0; i < _jsonData.watched.length; i++) {
-				if (data.url.includes(_jsonData.watched[i])) {
-					alreadyWatched = true;
-					break;
+			if (_watchedModeOn) {
+				for (let i = 0; i < _jsonData.watched.length; i++) {
+					if (data.url.includes(_jsonData.watched[i])) {
+						alreadyWatched = true;
+						break;
+					}
 				}
 			}
 			
@@ -87,6 +90,8 @@ function _filter(attr, kind, include, data) {
 bot.onText(/\/get/, (msg, match) => {
 	const chatId = msg.chat.id;
 	const resp = match[1];
+	// TODO (reiven): learn fucking regEx
+	_watchedModeOn = !match.input.includes('all');
 
 	_jsonData = readWatched();
 	getPageBody('http://kinozal.tv/top.php?w=1', function(err, results) {
@@ -106,7 +111,8 @@ bot.onText(/\/get/, (msg, match) => {
 				return;
 			}
 
-			writeWatched(_jsonData);
+			if (_watchedModeOn)
+				writeWatched(_jsonData);
 		});
 });
 
