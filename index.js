@@ -10,8 +10,7 @@ const token = '607906404:AAFQIbx5VOIMencvhVgyMLd8Q1JGHbdGO28';
 // Create a bot that uses 'polling' to fetch new updates
 const bot = new TelegramBot(token, {polling: true});
 
-let _jsonData;
-let _watchedModeOn = true;
+let _manualSearch = false;
 
 function readWatched() {
 	let data = fs.readFileSync('watched.json');
@@ -28,13 +27,6 @@ function readWatched() {
 }
 
 function writeWatched(jsonData) {
-	// jsonData = {
-	// 	watched: [
-	// 		'111231131',
-	// 		'123124121'
-	// 	]
-	// };
-	
 	var data = JSON.stringify(jsonData);
 	
 	fs.writeFile('watched.json', data, function (err) {
@@ -47,7 +39,7 @@ function writeWatched(jsonData) {
 	});
 }
 
-function getPageBody(uri, callback) {
+function getPageBody(uri, watchedModeOn, callback) {
 	request({
 		uri: uri,
 		encoding: null
@@ -66,7 +58,7 @@ function getPageBody(uri, callback) {
 			};
 
 			let alreadyWatched = false;
-			if (_watchedModeOn) {
+			if (watchedModeOn) {
 				for (let i = 0; i < _jsonData.watched.length; i++) {
 					if (data.url.includes(_jsonData.watched[i])) {
 						alreadyWatched = true;
@@ -82,39 +74,76 @@ function getPageBody(uri, callback) {
 	});
 }
 
-function _filter(attr, kind, include, data) {
+function filter(attr, kind, include, data) {
 	var filteredData = data.filter(chunk => chunk[attr].includes(kind) === include);
 	return filteredData;
 };
 
-bot.onText(/\/get/, (msg, match) => {
-	const chatId = msg.chat.id;
-	const resp = match[1];
-	// TODO (reiven): learn fucking regEx
-	_watchedModeOn = !match.input.includes('all');
-
+function getResult(chatId, watchedModeOn, manualSearch) {
+	if (!chatId) return;
 	_jsonData = readWatched();
-	getPageBody('http://kinozal.tv/top.php?w=1', function(err, results) {
+	getPageBody('http://kinozal.tv/top.php?w=1', watchedModeOn, function(err, results) {
 			if (err) throw new Error(err);
 		
-			results = _filter('title', 'РУ', false, results);
-			results = _filter('title', '/ 2018 /', true, results);
-			results = _filter('title', ' MP3', false, results);
+			results = filter('title', 'РУ', false, results);
+			results = filter('title', '/ 2018 /', true, results);
+			results = filter('title', ' MP3', false, results);
 
 			results.forEach(result => {
 				bot.sendMessage(chatId, 'http://kinozal.tv/' + result.url)
 				_jsonData.watched.push(result.url.replace('/details.php?id=', ''));
 			});
 
-			if (results.length === 0) {
-				bot.sendMessage(chatId, 'Вождя уже все смотреть!\nВождя ууумный!\nВождя есть мнооооого булка!')
+			if (manualSearch)
+				bot.sendMessage(chatId, 'Пока все, Вождя');
+			
+			if (results.length === 0)
 				return;
-			}
 
-			if (_watchedModeOn)
+			if (watchedModeOn)
 				writeWatched(_jsonData);
 		});
+}
+
+bot.onText(/\/get/, (msg, match) => {
+	var chatId = msg.chat.id;
+	// TODO (reiven): learn fucking regEx
+
+	if (match.input.includes('alive')) {
+		bot.sendMessage(chatId, 'Я тут, Вождя');
+		return;
+	}
+	
+	bot.sendMessage(chatId, 'Моя смотреть, Вождя. Твоя ждать...');
+	let watchedModeOn = !match.input.includes('all');
+	let manualSearch = true;
+	getResult(chatId, watchedModeOn, manualSearch);
 });
 
+bot.onText(/\/start/, (msg, match) => {
+	var chatId = msg.chat.id;
+	if (match.input.includes('interval')) {
+		bot.sendMessage(chatId, 'Запускать интервал, Вождя');
+		intervalSearch(chatId);
+		return;
+	}
+});
 
+function intervalSearch(chatId) {
+	setInterval(function () {
+		let myTimeZone = 2;
+		let offset = (new Date().getTimezoneOffset() / 60) * myTimeZone;
+		let current_hour = (new Date(new Date().getTime() + offset)).getHours();
+		if (current_hour >= 9 && current_hour <= 22) {
+			let watchedModeOn = true;
+			let manualSearch = false;
+			getResult(chatId, watchedModeOn, manualSearch);
+			// bot.sendMessage(chatId, 'Провека по времени, Вождя. Сам просить!');
+		}
+	}, 1000 * 60 * 10); // 10 minutes
+}
+
+// TODO (reiven): customize timezone ???
+// TODO (reiven): add interval stop
+// TODO (reiven): add interval settings???
 
